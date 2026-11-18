@@ -207,3 +207,92 @@ Wakes the physical device screen.
 Dismisses the lockscreen and optionally inputs a PIN.
 - **Arguments**:
   - `pin` (*string*, optional)
+
+---
+
+### Application Lifecycle
+
+#### `device.apps.install`
+Installs an Android application (.apk). When Shizuku is connected, performs a silent background install with runtime permissions auto-granted (`pm install -r -d -g <path>`) with zero user prompts. When Shizuku is unavailable, launches the system `PackageInstaller` intent sheet or Play Store.
+- **Arguments**:
+  - `path` (*string*, optional): Local filesystem path to the APK (e.g. `/sdcard/Download/app.apk`).
+  - `url` (*string*, optional): Remote HTTP/HTTPS URL. Hands downloads the file to temporary storage and installs it.
+  - `package` (*string*, optional): Package ID fallback to open in Play Store / Galaxy Store.
+  - `grant_permissions` (*boolean*, optional, default: true): Auto-grant runtime permissions (Shizuku only).
+  - `allow_downgrade` (*boolean*, optional, default: true): Permit installing older versions (Shizuku only).
+  - `reinstall` (*boolean*, optional, default: true): Keep existing application data during update (Shizuku only).
+
+#### `device.apps.uninstall`
+Uninstalls an application. When Shizuku is connected and `silent: true`, removes the package silently in background via `pm uninstall`. Otherwise, triggers the system confirmation dialog.
+- **Arguments**:
+  - `package` (*string*, required): Package name to remove.
+  - `silent` (*boolean*, optional, default: false): Silent uninstall via Shizuku.
+
+---
+
+### Hardware & Peripherals
+
+#### `device.torch`
+Toggles or sets the hardware camera flashlight. Genuine L0 tool, no Android permissions required, works directly from background or screen-off.
+- **Arguments**:
+  - `state` (*string*, optional, `"on"` | `"off"` | `"toggle"`, default: `"toggle"`): Target flashlight state.
+- **Response**:
+  ```json
+  {
+    "ok": true,
+    "result": {
+      "torch": "on",
+      "enabled": true,
+      "camera_id": "0"
+    }
+  }
+  ```
+
+---
+
+### Clock & Timer Management
+
+#### `device.alarm.set`
+Schedules an alarm in the system clock app.
+- **Arguments**:
+  - `hour` (*integer*, required, 0–23): Alarm hour.
+  - `minute` (*integer*, required, 0–59): Alarm minute.
+  - `label` (*string*, optional): Alarm description.
+  - `skip_ui` (*boolean*, optional, default: true): Request clock app to stay in background.
+
+#### `device.alarm.dismiss`
+Dismisses or cancels a scheduled or currently sounding alarm via `AlarmClock.ACTION_DISMISS_ALARM`.
+- **Arguments**:
+  - `search_mode` (*string*, optional, `"time"` | `"label"` | `"next"` | `"all"`): Targeting criteria.
+  - `hour` (*integer*, optional, 0–23): For `search_mode="time"`.
+  - `minute` (*integer*, optional, 0–59): For `search_mode="time"`.
+  - `label` (*string*, optional): For `search_mode="label"`.
+  - `skip_ui` (*boolean*, optional, default: true)
+
+#### `device.alarm.show`
+Directly opens the system clock app to the Alarms tab.
+
+#### `device.alarm.snooze`
+Snoozes a currently ringing alarm via `AlarmClock.ACTION_SNOOZE_ALARM`.
+- **Arguments**:
+  - `duration_minutes` (*integer*, optional): Snooze duration in minutes.
+
+#### `device.timer.set`
+Starts a countdown timer in the clock app.
+- **Arguments**:
+  - `seconds` (*integer*, required): Timer length in seconds.
+  - `label` (*string*, optional): Timer label.
+  - `skip_ui` (*boolean*, optional, default: true)
+
+#### `device.timer.dismiss`
+Dismisses an expired countdown timer via `AlarmClock.ACTION_DISMISS_TIMER`.
+- **Arguments**:
+  - `skip_ui` (*boolean*, optional, default: true)
+
+#### `device.timer.reset`
+Resets an active or expired countdown timer via `android.intent.action.RESET_TIMER`.
+- **Arguments**:
+  - `skip_ui` (*boolean*, optional, default: true)
+
+#### `device.timer.show`
+Directly opens the system clock app to the Timers tab via `AlarmClock.ACTION_SHOW_TIMERS`.

@@ -33,7 +33,8 @@
 - **Dual-Display Architecture**: Operates on an independent secondary virtual display (Display $N$) without disrupting the user's physical display (Display 0).
 - **True Screen-Off Headless Execution**: Decoupled from physical display composition using a low-latency `<50ms` headless `ImageReader`. Operates through deep sleep without lighting up the phone.
 - **Privileged Shizuku Integration**: Multi-display input injection (`click`, `swipe`, `scroll`, `type`), hardware display captures, and process isolation via Shizuku (`UID 2000`).
-- **Model Context Protocol (MCP)**: Native Python MCP server exposing **86 mobile tools** directly to Claude Desktop, Hermes Agent, Antigravity, or Cursor.
+- **Model Context Protocol (MCP)**: Native Python MCP server exposing **94 mobile tools** directly to Claude Desktop, Hermes Agent, Antigravity, or Cursor.
+- **Privileged App & Device Control**: Silent background app installation/uninstallation via Shizuku (`pm install -r -d -g`), hardware torch/flashlight control, comprehensive clock alarms & timers, full file system access, and system settings.
 - **Safety Boundaries**: Arm-first leased access (`device.arm`), protected package denylists, hardware-backed token encryption, and automatic private entry masking (`DevicePrivacy`).
 - **Doze-Proof Service**: Holds low-power `PARTIAL_WAKE_LOCK` to keep the HTTPS REST server (`:8766`) responsive over Tailscale or local Wi-Fi while sleeping.
 

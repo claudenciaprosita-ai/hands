@@ -33,7 +33,11 @@ Hands utilizes [Shizuku](https://shizuku.rikka.app/) to perform privileged syste
 Connect your phone via USB or Tailscale wireless ADB and execute:
 
 ```bash
-adb shell rish_starter.sh || adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh
+# Direct native starter (verified on Samsung Galaxy / modern Android):
+adb shell /data/local/tmp/libshizuku.so
+
+# Alternative legacy starter scripts:
+adb shell sh /sdcard/Android/data/moe.shizuku.privileged.api/start.sh
 ```
 
 ### Method C: Root (Magisk / KernelSU / APatch)
@@ -58,5 +62,22 @@ If your device is rooted:
 ## 4. Hands Auto-Connect & Self-Healing
 
 Hands features built-in self-healing for Shizuku:
-- **Automatic Binder Binding**: Whenever Hands starts, receives an arming lease, or wakes from idle, [`ShizukuController`](file:///Users/nyx/Projects/hermes-hands/hands-engine/src/main/java/app/hermes/hands/engine/ShizukuController.kt) verifies the binder connection and automatically re-binds.
+- **Automatic Binder Binding**: Whenever Hands starts, receives an arming lease, or wakes from idle, `ShizukuController` verifies the binder connection and automatically re-binds.
 - **Agent Tool (`mobile_shizuku_connect`)**: If the connection drops or is delayed during long reasoning, remote agents can call `mobile_shizuku_connect` to reconnect synchronously.
+
+---
+
+## 5. Wi-Fi Disconnects & Samsung One UI Process Lifetime
+
+### Why does Shizuku stop when Wi-Fi is disconnected?
+Under vanilla AOSP, processes started via ADB inherit ADB's session, but on certain OEM skins—particularly **Samsung One UI**:
+1. **`sec_adbd` Process Group Teardown**: Samsung's proprietary ADB daemon (`sec_adbd`) actively monitors the network state. When Wi-Fi is toggled off or disconnected, `sec_adbd` shuts down its network listener and explicitly sends `SIGKILL` or `SIGHUP` to the entire child process group spawned under the wireless session.
+2. **Android 12+ Phantom Process Killer**: Android enforces a strict limit (default 32) on background child processes spawned by apps or shell. If the phone is under memory pressure or changes network states, Android aggressively terminates background processes lacking foreground notification tokens.
+
+### Best Practices for Maximum Uptime:
+- **Keep Wi-Fi Active or Connected to Tailscale**: Leaving Wi-Fi enabled keeps `sec_adbd` running smoothly.
+- **Quick Restart via ADB / Tailscale**: If Shizuku terminates, execute:
+  ```bash
+  adb shell /data/local/tmp/libshizuku.so
+  ```
+- **Fallback to Hybrid Mode**: In Hands' settings, keep the engine set to **Hybrid**. If Shizuku ever drops while you are away from Wi-Fi, Hands seamlessly falls back to the system Accessibility engine for primary screen control so you never lose remote access.
