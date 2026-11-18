@@ -1,0 +1,159 @@
+package app.hermes.companion.domain
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class WakePolicyTest {
+    @Test
+    fun parsesBareAndNtfyWrapped() {
+        val bare = WakePolicy.parse("""{"type":"approval.request","session_id":"s1","profile":"coder"}""")!!
+        assertEquals("approval.request", bare.type)
+        assertEquals("s1", bare.sessionId)
+        assertEquals("coder", bare.profile)
+        val wrapped = WakePolicy.parse(
+            """{"id":"n1","message":"{\"type\":\"clarify\",\"session_id\":\"s2\",\"profile\":\"ops\"}"}""",
+        )!!
+        assertEquals("clarify", wrapped.type)
+        assertEquals("s2", wrapped.sessionId)
+    }
+
+    @Test
+    fun pingCarriesHostFromPayloadOrTopic() {
+        val fromTopic = WakePolicy.parse(
+            """{"type":"clarify","session_id":"s","profile":"coder"}""",
+            origin = "http://lab:9120",
+        )!!
+        assertEquals("http://lab:9120", fromTopic.origin)
+        val fromPayload = WakePolicy.parse(
+            """{"type":"clarify","session_id":"s","profile":"coder","origin":"http://hub:9120"}""",
+            origin = "http://lab:9120",
+        )!!
+        assertEquals("http://hub:9120", fromPayload.origin)
+        assertEquals("", WakePolicy.parse("""{"type":"error","session_id":"s","profile":"p"}""")!!.origin)
+    }
+
+    @Test
+    fun subscriptionRoutingCannotBeOverriddenByAnExternalPublisher() {
+        val raw = """{"type":"approval.request","session_id":"s","profile":"coder","origin":"https://unrelated.example"}"""
+        val ping = WakePolicy.parseForSubscription(raw, "https://known.example/hermes")!!
+        assertEquals("https://known.example/hermes", ping.origin)
+        assertEquals("coder", ping.profile)
+        assertNull(WakePolicy.parseForSubscription(raw, ""))
+    }
+
+    @Test
+    fun authorityOnlyTopicsCannotBeReboundToAnActiveOrSavedProxyPath() {
+        val topics = mapOf("https://known.example" to "https://ntfy.example/topic")
+        assertTrue(WakePolicy.subscriptionTargets(topics, listOf("https://known.example/hermes"), null).isEmpty())
+        val multiple = listOf("https://known.example/one", "https://known.example/two")
+        assertTrue(WakePolicy.subscriptionTargets(topics, multiple, "https://known.example/two").isEmpty())
+        assertTrue(WakePolicy.subscriptionTargets(topics, emptyList(), null).isEmpty())
+    }
+
+    @Test
+    fun exactTopicsKeepIndependentProxyOwnersAcrossActiveSwitches() {
+        val first = "https://known.example/one"
+        val second = "https://known.example/two"
+        val topics = mapOf(first to "https://ntfy.example/one", second to "https://ntfy.example/two")
+        assertEquals(topics, WakePolicy.subscriptionTargets(topics, listOf(first, second), second))
+        assertEquals(
+            mapOf(first to "https://ntfy.example/one"),
+            WakePolicy.subscriptionTargets(mapOf(first to "https://ntfy.example/one"), listOf(first), second),
+        )
+        assertTrue(WakePolicy.subscriptionTargets(mapOf(first to "https://ntfy.example/one"), emptyList(), second).isEmpty())
+    }
+
+    @Test
+    fun exactTopicOwnersNormalizeOnlyEquivalentOriginForms() {
+        assertEquals("https://known.example/Assistant", WakePolicy.topicOwnerKey("HTTPS://KNOWN.example:443/Assistant/"))
+        assertEquals("http://[fd7a::1]:9120/proxy", WakePolicy.topicOwnerKey("http://[FD7A::1]:9120/proxy"))
+        assertEquals("http://host:9120/proxy", WakePolicy.topicOwnerKey("host:9120/proxy"))
+        assertEquals(
+            mapOf("https://known.example/one" to "https://ntfy.example/one"),
+            WakePolicy.subscriptionTargets(mapOf("https://known.example/one" to "https://ntfy.example/one"),
+                emptyList(), "https://KNOWN.example:443/one/"),
+        )
+    }
+
+    @Test
+    fun exactTopicOwnersRejectCredentialsQueriesAndInvalidOrigins() {
+        listOf("", "https://", "file:///proxy", "https://user:password@host/proxy",
+            "https://host/proxy?token=secret", "https://host/proxy#fragment").forEach {
+            assertNull(it, WakePolicy.topicOwnerKey(it))
+        }
+    }
+
+    @Test
+    fun ignoresTranscriptAndUnknownType() {
+        assertNull(WakePolicy.parse("""{"type":"chat.delta","session_id":"s","profile":"coder","body":"secret"}"""))
+        val ping = WakePolicy.parse(
+            """{"type":"error","session_id":"s","profile":"coder","body":"do not keep","content":"nope"}""",
+        )!!
+        assertEquals("error", ping.type)
+        assertEquals("s", ping.sessionId)
+    }
+
+    @Test
+    fun sseAndDeepLink() {
+        assertEquals("https://ntfy.local/hermes/sse", WakePolicy.sseUrl("https://ntfy.local/hermes"))
+        assertNull(WakePolicy.sseUrl("ntfy.local/hermes"))
+        val link = WakePolicy.deepLink("sess-1", "coder")
+        assertEquals("hermes-companion://open?session=sess-1&profile=coder", link)
+        assertEquals(DeepLink("sess-1", "coder", ""), WakePolicy.parseDeepLink(link))
+        assertNull(WakePolicy.parseDeepLink("https://evil.example/open?session=s&profile=p"))
+        val hosted = WakePolicy.deepLink("sess-1", "coder", "http://100.88.4.63:9120")
+        assertEquals(
+            "hermes-companion://open?session=sess-1&profile=coder&host=http%3A%2F%2F100.88.4.63%3A9120",
+            hosted,
+        )
+        assertEquals(DeepLink("sess-1", "coder", "http://100.88.4.63:9120"), WakePolicy.parseDeepLink(hosted))
+    }
+
+    @Test
+    fun topicUrlPreservesQueriesAndEncodingWithoutAppendingSseToTheQuery() {
+        assertEquals(
+            "https://ntfy.local/team%2Ftopic/sse?priority=high",
+            WakePolicy.sseUrl("https://ntfy.local/team%2Ftopic?priority=high#unused"),
+        )
+        assertEquals(
+            "https://ntfy.local/topic/sse?since=latest",
+            WakePolicy.sseUrl("https://ntfy.local/topic/sse?since=latest"),
+        )
+        assertEquals("http://ntfy.local/topic/sse", WakePolicy.sseUrl("http://ntfy.local/topic/"))
+        assertNull(WakePolicy.sseUrl("https://"))
+        assertNull(WakePolicy.sseUrl("https://bad host/topic"))
+        assertNull(WakePolicy.sseUrl("file:///topic"))
+    }
+
+    @Test
+    fun pairDeepLinkRoundTrip() {
+        val link = WakePolicy.pairDeepLink("http://100.83.141.111:9120", "X7K2M9", "ops")
+        assertEquals(
+            "hermes-companion://pair?origin=http%3A%2F%2F100.83.141.111%3A9120&code=X7K2M9&profile=ops",
+            link,
+        )
+        val parsed = WakePolicy.parsePairDeepLink(link)
+        assertEquals(PairDeepLink("http://100.83.141.111:9120", "X7K2M9", "ops"), parsed)
+
+        // Handles lowercase code normalization and alternative host param
+        val alt = "hermes-companion://pair?host=http://lab:9120&code=abcdef"
+        val parsedAlt = WakePolicy.parsePairDeepLink(alt)
+        assertEquals(PairDeepLink("http://lab:9120", "ABCDEF", "default"), parsedAlt)
+
+        // Rejects non-pair links
+        assertNull(WakePolicy.parsePairDeepLink("hermes-companion://open?session=s1&profile=p1"))
+        assertNull(WakePolicy.parsePairDeepLink("https://example.com/pair?origin=h&code=c"))
+    }
+
+    @Test
+    fun pairDeepLinkMatchesPluginEncoding() {
+        // Verbatim from hermes-plugin qr.pair_deep_link (test_pair_deep_link_encodes_awkward_origins).
+        val fromCli = "hermes-companion://pair?origin=https%3A%2F%2Fhermes.example.ts.net%2Fhub%3Fx%3D1%26y%3D2%23frag" +
+            "&code=X7K2M9&profile=ops%20team"
+        val origin = "https://hermes.example.ts.net/hub?x=1&y=2#frag"
+        assertEquals(PairDeepLink(origin, "X7K2M9", "ops team"), WakePolicy.parsePairDeepLink(fromCli))
+        assertEquals(fromCli, WakePolicy.pairDeepLink(origin, "x7k2m9", "ops team"))
+    }
+}

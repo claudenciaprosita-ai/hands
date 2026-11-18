@@ -1,0 +1,75 @@
+package app.hermes.companion.domain
+
+import app.hermes.companion.model.RoomParticipant
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class RoomsTest {
+    @Test
+    fun remoteSpeakersAreNamedWithTheirHost() {
+        val parts = listOf(RoomParticipant("coder", "COD"), RoomParticipant("bishop", "BIS", host = "Hub11"))
+        assertEquals("bishop · Hub11", Rooms.displayName("bishop@Hub11", parts))
+        assertEquals("coder", Rooms.displayName("coder", parts))
+        assertEquals("Hub11", Rooms.hostOf("bishop@Hub11"))
+        assertEquals(null, Rooms.hostOf("coder"))
+        assertEquals("paused · budget of 6 turns reached", Rooms.stateLabel("paused", "budget", 6, 6))
+        assertEquals("room quiet · 4 turns", Rooms.stateLabel("quiet", "", 4, 12))
+        assertEquals("", Rooms.stateLabel("running", "", 1, 12))
+        assertEquals(true, Rooms.mentionsOperator("waiting on @YOU for the symptom"))
+        assertEquals(false, Rooms.mentionsOperator("email you@example.com"))
+    }
+
+    @Test
+    fun glyphMirrorsHost() {
+        assertEquals("COD", Rooms.glyph("coder"))
+        assertEquals("OP", Rooms.glyph("op"))
+        assertEquals("YOU", Rooms.glyph(null))
+        assertEquals("YOU", Rooms.glyph("operator"))
+    }
+
+    @Test
+    fun backingSessionsAreHidden() {
+        assertTrue(Rooms.isBackingSession("room:r-1 triage"))
+        assertFalse(Rooms.isBackingSession("roomy thread"))
+    }
+
+    @Test
+    fun mentionChipInsertsOnce() {
+        assertEquals("@OPS ", Rooms.withMention("", "OPS"))
+        assertEquals("pull the journal @OPS ", Rooms.withMention("pull the journal", "OPS"))
+        assertEquals("@ops please", Rooms.withMention("@ops please", "OPS"))
+    }
+
+    @Test
+    fun speakerIndexFallsBackToZero() {
+        val parts = listOf(RoomParticipant("coder", "COD"), RoomParticipant("ops", "OPS"))
+        assertEquals(1, Rooms.speakerIndex("ops", parts))
+        assertEquals(0, Rooms.speakerIndex("ghost", parts))
+        assertEquals(0, Rooms.speakerIndex(null, parts))
+    }
+
+    @Test
+    fun displayNamePrefersProfileDisplayName() {
+        val profiles = listOf(
+            app.hermes.companion.model.ProfileRef(id = "coder", displayName = "Senior Coder", glyph = "SEN"),
+        )
+        val parts = listOf(RoomParticipant("coder", "COD"), RoomParticipant("ops", "OPS"))
+        assertEquals("Senior Coder", Rooms.displayName("coder", parts, profiles))
+        assertEquals("ops", Rooms.displayName("ops", parts, profiles))
+        assertEquals("ghost", Rooms.displayName("ghost", parts, profiles))
+        assertEquals("YOU", Rooms.displayName(null, parts, profiles))
+        assertEquals("YOU", Rooms.displayName("operator", parts, profiles))
+    }
+
+    @Test
+    fun speakerLabelNeverSaysHermesInRoomMode() {
+        val parts = listOf(RoomParticipant("coder", "COD"), RoomParticipant("ops", "OPS"))
+        assertEquals("coder", Rooms.speakerLabel("coder", parts))
+        assertEquals("Agent", Rooms.speakerLabel(null, parts))
+        val singlePart = listOf(RoomParticipant("coder", "COD"))
+        assertEquals("coder", Rooms.speakerLabel(null, singlePart))
+        assertEquals("Agent", Rooms.speakerLabel(null, emptyList()))
+    }
+}

@@ -1,0 +1,61 @@
+package app.hermes.companion.domain
+
+import app.hermes.companion.model.SnapshotNode
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class CompactTreeTest {
+    @Test
+    fun refsAreSessionLocalEn() {
+        assertEquals("e1", CompactTree.ref(0))
+        assertEquals("e2", CompactTree.ref(1))
+    }
+
+    @Test
+    fun clipsAndEncodes() {
+        val nodes = (0 until 100).map { i ->
+            SnapshotNode(ref = CompactTree.ref(i), role = "button", text = "n$i", clickable = true, bounds = listOf(0, i, 10, i + 1))
+        }
+        val clipped = CompactTree.clip(nodes)
+        assertEquals(CompactTree.MAX_NODES, clipped.size)
+        val json = CompactTree.json(nodes, app = "com.example.fixture", activity = ".Main", width = 1080, height = 2400)
+        assertTrue(json.contains("\"ref\":\"e1\""))
+        assertTrue(json.contains("com.example.fixture"))
+        assertFalse(json.contains("\"ref\":\"e81\""))
+        assertEquals(80, CompactTree.refsOf(nodes).size)
+    }
+
+    @Test
+    fun findClickablePrefersExactClickableThenUniqueSubstring() {
+        val send = SnapshotNode(ref = "e1", role = "button", text = "Send", clickable = true, bounds = listOf(0, 0, 10, 10))
+        val sendTo = SnapshotNode(ref = "e2", role = "button", text = "Send to group", clickable = true, bounds = listOf(0, 20, 10, 30))
+        val label = SnapshotNode(ref = "e3", role = "text", text = "Send", clickable = false, bounds = listOf(0, 40, 10, 50))
+        assertEquals("e1", CompactTree.findClickable(listOf(send, sendTo, label), "Send")?.ref)
+        assertEquals("e2", CompactTree.findClickable(listOf(send, sendTo), "group")?.ref)
+        assertEquals(null, CompactTree.findClickable(listOf(send, sendTo), "Sen"))
+        assertEquals("e3", CompactTree.findClickable(listOf(label), "Send")?.ref)
+        assertEquals(null, CompactTree.findClickable(listOf(send), "  "))
+    }
+
+    @Test
+    fun includesSafeAreaWhenSpecified() {
+        val nodes = listOf(
+            SnapshotNode(ref = "e1", role = "button", text = "Submit", clickable = true, bounds = listOf(80, 400, 1000, 496))
+        )
+        val safe = app.hermes.companion.model.ScreenSafeArea(top = 104, bottom = 68, left = 0, right = 0)
+        val json = CompactTree.json(nodes, app = "com.test", width = 1080, height = 2400, safeArea = safe)
+        assertTrue(json.contains("\"safe_area\":{\"top\":104,\"bottom\":68,\"left\":0,\"right\":0}"))
+    }
+
+    @Test
+    fun observationMetadataIdentifiesWhenAndWhichWindowWasRead() {
+        val json = CompactTree.json(emptyList(), app = "com.example", capturedAtMs = 123456789L,
+            windowId = 42, generation = 7L)
+        assertTrue(json.contains("\"captured_at_ms\":123456789"))
+        assertTrue(json.contains("\"window_id\":42"))
+        assertTrue(json.contains("\"generation\":7"))
+        assertFalse(CompactTree.json(emptyList()).contains("captured_at_ms"))
+    }
+}

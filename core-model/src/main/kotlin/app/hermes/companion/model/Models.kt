@@ -1,0 +1,595 @@
+package app.hermes.companion.model
+
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+enum class SpeechBackend { HOST, SYSTEM }
+
+@Serializable
+data class GatewayRef(
+    val id: String,
+    val origin: String,
+    val label: String,
+)
+
+@Serializable
+data class PlatformStatus(
+    val name: String,
+    val state: String = "",
+    val error: String = "",
+)
+
+data class DashboardStatus(
+    val authRequired: Boolean,
+    val authProviders: List<String> = emptyList(),
+    val version: String = "",
+    val gatewayRunning: Boolean = false,
+    val gatewayState: String = "",
+    val platforms: List<PlatformStatus> = emptyList(),
+    val memoryPressure: String = "",
+    val diskPressure: String = "",
+    val exitReason: String = "",
+)
+
+@Serializable
+data class ProfileRef(
+    val id: String,
+    val displayName: String,
+    val glyph: String,
+    val model: String = "",
+    val gateway: String = "",
+    val sessionCount: Int = 0,
+)
+
+@Serializable
+data class SessionRef(
+    val id: String,
+    val profileId: String,
+    val title: String,
+    /** Last activity (host `updated_at` / `last_activity_at`); falls back to [createdAtEpochMs]. */
+    val updatedAtEpochMs: Long,
+    val unread: Boolean = false,
+    val ended: Boolean = false,
+    /** Host `started_at` / `created_at`. 0 when the host did not say; sorting then uses [updatedAtEpochMs]. */
+    val createdAtEpochMs: Long = 0L,
+    val messageCount: Int = 0,
+    /** Origin platform (`telegram`, `cli`, `dashboard`, …) when the host reports one. */
+    val source: String = "",
+    /** Host `archived` flag. Hidden from the rail unless the operator turns ARCHIVED on. */
+    val archived: Boolean = false,
+    val pinned: Boolean = false,
+)
+
+enum class MessageRole { USER, ASSISTANT, TOOL }
+
+/** Local delivery state. SENT means the host acknowledged the input, not that its turn finished. */
+enum class MessageDelivery { NONE, QUEUED, SENDING, SENT, FAILED, UNCERTAIN }
+
+data class SessionRuntimeSnapshot(val running: Boolean = false, val assistant: String = "", val approval: ApprovalPrompt? = null)
+
+@Serializable
+enum class ChatBlockKind { TEXT, IMAGE, VIDEO, FILE }
+
+@Serializable
+data class ChatBlock(
+    val kind: ChatBlockKind = ChatBlockKind.TEXT,
+    val text: String = "",
+    val url: String = "",
+    val alt: String = "",
+    val name: String = "",
+    val mime: String = "",
+    val sizeBytes: Long = 0L,
+)
+
+@Serializable
+data class ChatAttachment(
+    val id: String,
+    val localUri: String,
+    val name: String,
+    val mime: String,
+    val kind: ChatBlockKind,
+    val uploadedUrl: String = "",
+    val sizeBytes: Long = 0L,
+)
+
+@Serializable
+data class ChatMessage(
+    val id: String,
+    val role: MessageRole,
+    val text: String,
+    val toolName: String? = null,
+    val toolDetail: String? = null,
+    val streaming: Boolean = false,
+    val queued: Boolean = false,
+    val blocks: List<ChatBlock> = emptyList(),
+    /** Tool row whose `tool.start` has arrived but no `tool.complete` yet. Transient; never cached. */
+    val toolRunning: Boolean = false,
+    /** Room turns: the profile that spoke. Null means the single agent of a normal thread. */
+    val speaker: String? = null,
+    /** Room turn where the agent replied PASS (rendered muted, no text). */
+    val passed: Boolean = false,
+    /** Room summary turn (pinned at the top of the room). */
+    val summary: Boolean = false,
+    val delivery: MessageDelivery = MessageDelivery.NONE,
+    val reasoning: Boolean = false,
+)
+
+/** One profile taking part in a room. */
+@Serializable
+data class RoomParticipant(
+    val profile: String,
+    val glyph: String,
+    /** Peer relay the participant lives on (cross-host rooms, A22.11); null = this host. */
+    val host: String? = null,
+) {
+    /** Wire id: `profile` or `profile@host`. Speakers in events use this form. */
+    val id: String get() = if (host.isNullOrBlank()) profile else "$profile@$host"
+}
+
+/** Turn policy requested at create / PATCH time (A22.10). */
+@Serializable
+data class RoomPolicySpec(
+    val mode: String = "converse",
+    val maxTurns: Int = 12,
+    val maxRounds: Int = 2,
+    val moderator: String = "",
+    val hands: String = "",
+)
+
+/** A host-side group chat between the operator and several profiles (P21, v2 in P22). */
+@Serializable
+data class RoomRef(
+    val id: String,
+    val title: String,
+    val participants: List<RoomParticipant> = emptyList(),
+    val maxRounds: Int = 2,
+    val seq: Int = 0,
+    val messageCount: Int = 0,
+    val busy: Boolean = false,
+    /** Participant id currently taking a turn, when [busy]. */
+    val speaking: String? = null,
+    val updatedAtEpochMs: Long = 0L,
+    val lastText: String = "",
+    val lastSpeaker: String = "",
+    // v2
+    val mode: String = "converse",
+    /** `idle` · `running` · `quiet` · `paused`. */
+    val state: String = "idle",
+    /** `budget` · `time` · `stall` · `operator` while [state] is `paused`. */
+    val pauseReason: String = "",
+    val turnsUsed: Int = 0,
+    val maxTurns: Int = 12,
+    val budget: Int = 12,
+    val hands: String = "",
+    val moderator: String = "",
+    /** Agent approval waiting on the operator, if any. */
+    val approval: ApprovalPrompt? = null,
+    val summary: String = "",
+)
+
+/** A peer relay this host can ask for turns (cross-host rooms). */
+@Serializable
+data class PeerLink(val name: String, val origin: String, val hostId: String = "", val reachable: Boolean? = null)
+
+@Serializable
+data class OutboxItem(
+    val id: String,
+    val origin: String,
+    val profileId: String,
+    val sessionId: String,
+    val text: String,
+    val createdAtEpochMs: Long,
+    val attempts: Int = 0,
+    val lastError: String = "",
+    val attachmentsJson: String = "",
+    /** Null before submission; captured durable user ids let lost acknowledgments reconcile safely. */
+    val baselineUserIds: List<String>? = null,
+    val voice: VoiceTurnMetadata? = null,
+)
+
+@Serializable
+data class CompanionHealth(
+    val relay: String = "",
+    val mode: String = "",
+    val upstream: String = "",
+    val hermesVersion: String = "",
+    val profilesDir: String = "",
+    val drift: String = "",
+    val connectionSettings: Boolean = false,
+    val modeSource: String = "",
+)
+
+/** Optional host integration, discovered independently of native operator authentication. */
+enum class CompanionAvailability { UNKNOWN, AVAILABLE, UNAVAILABLE }
+
+data class NativeVoiceStatus(val mode: String = "", val available: Boolean? = null,
+    val reason: String = "", val model: String = "", val voice: String = "")
+data class SynthesizedSpeech(val bytes: ByteArray, val mime: String, val provider: String)
+data class SpeechTranscript(val text: String, val provider: String)
+
+@Serializable
+data class HistoryPage(
+    val messages: List<ChatMessage>,
+    val hasMore: Boolean,
+    val source: String = "",
+)
+
+@Serializable
+data class ApprovalPrompt(
+    val requestId: String,
+    val kind: String = "approval",
+    val command: String,
+    val choices: List<String> = listOf("once", "deny"),
+    /** Native option identifiers are submitted unchanged; labels are presentation only. */
+    val choiceLabels: Map<String, String> = emptyMap(),
+    /** Room turns: the participant that raised it. Null in a single-agent thread. */
+    val speaker: String? = null,
+)
+
+@Serializable
+data class SessionChange(
+    val op: String,
+    val session: SessionRef,
+    val fields: Set<String>? = null,
+)
+
+sealed class ChatEvent {
+    data class Accepted(val status: String = "streaming", val userRowId: Long? = null) : ChatEvent()
+    data class Final(
+        val text: String = "",
+        val status: String = "complete",
+        val error: String = "",
+        val reused: Boolean = false,
+    ) : ChatEvent()
+    data class ReasoningDelta(val text: String) : ChatEvent()
+    data class Interim(val text: String) : ChatEvent()
+    /** [speaker] is set only for room turns (the profile talking). */
+    data class AssistantDelta(val text: String, val speaker: String? = null) : ChatEvent()
+    data class ToolStarted(val name: String, val detail: String, val speaker: String? = null) : ChatEvent()
+    data class ToolCompleted(val name: String, val detail: String, val durationMs: Long = 0, val speaker: String? = null) : ChatEvent()
+    data class Approval(val prompt: ApprovalPrompt) : ChatEvent()
+    data class PromptExpired(val requestId: String) : ChatEvent()
+    data class Rewound(val userRowIds: List<Long?>) : ChatEvent()
+    data object Completed : ChatEvent()
+
+    // Room-only events (P21).
+    /** A participant is about to speak; [turnId] keys that participant's streaming segment. */
+    data class TurnStarted(val speaker: String, val turnId: String, val round: Int) : ChatEvent()
+    /** A participant finished; the segment is closed. [passed] = replied PASS. */
+    data class TurnEnded(val speaker: String, val turnId: String, val seq: Int, val passed: Boolean, val error: String) : ChatEvent()
+    /** Another client posted as the operator (echo); dedupe by [seq]. */
+    data class RoomPost(val seq: Int, val text: String) : ChatEvent()
+    /** The room's floor state changed: `running` · `quiet` · `paused` (+ reason) · `idle`. */
+    data class RoomState(val state: String, val reason: String, val turnsUsed: Int, val budget: Int, val seq: Int) : ChatEvent()
+    /** Socket (re)connected; the host is at [seq] — replay `history?after=<local seq>` if behind. */
+    data class RoomReady(val seq: Int, val room: RoomRef?) : ChatEvent()
+    /** Rename / policy / participants changed on the host. */
+    data class RoomUpdated(val room: RoomRef) : ChatEvent()
+}
+
+sealed class BusFrame {
+    data class Chat(val event: ChatEvent, val sessionId: String?) : BusFrame()
+    data class SessionPatch(val change: SessionChange) : BusFrame()
+    data object SessionRefetch : BusFrame()
+}
+
+@Serializable
+data class GatewayHello(
+    val changeEvents: Boolean = false,
+    val heartbeat: Boolean = false,
+    val instanceId: String = "",
+)
+
+enum class DeviceArm { DISARMED, ARMED, EXECUTING }
+
+enum class PairingPhase { IDLE, WAITING, PAIRED }
+
+@Serializable
+data class DeviceCred(
+    val deviceId: String,
+    val profileId: String,
+    val credential: String,
+    val origin: String = "",
+)
+
+data class PairingStatus(
+    val status: String,
+    val deviceId: String = "",
+    val profileId: String = "",
+    val credential: String = "",
+) {
+    val approved: Boolean
+        get() = status == "approved" && deviceId.isNotBlank() && credential.isNotBlank()
+}
+
+data class DeviceTicket(
+    val ticket: String,
+    val capabilities: List<String> = emptyList(),
+    val ttlSec: Int = 30,
+)
+
+data class DeviceCommand(
+    val commandId: String,
+    val action: String,
+    val argumentsJson: String = "{}",
+    val toolCallId: String = "",
+    val profile: String = "",
+    val deviceId: String = "",
+)
+
+data class DeviceResult(
+    val commandId: String,
+    val ok: Boolean,
+    val resultJson: String = "{}",
+    val errorCode: String = "",
+    val errorMessage: String = "",
+)
+
+data class SnapshotNode(
+    val ref: String,
+    val role: String,
+    val text: String = "",
+    val clickable: Boolean = false,
+    val bounds: List<Int> = emptyList(),
+)
+
+@Serializable
+data class ScreenSafeArea(
+    val top: Int = 0,
+    val bottom: Int = 0,
+    val left: Int = 0,
+    val right: Int = 0,
+)
+
+enum class HudState { OFF, ON, DEGRADED }
+
+@Serializable
+data class GatewayHud(
+    val gateway: HudState = HudState.OFF,
+    val telegram: HudState = HudState.OFF,
+    val discord: HudState = HudState.OFF,
+    val api: HudState = HudState.OFF,
+)
+
+@Serializable
+data class HostCpuMetrics(
+    val percent: Double = 0.0,
+    val cores: Int = 1,
+    @SerialName("load_avg") val loadAvg: List<Double> = emptyList(),
+)
+
+@Serializable
+data class HostMemoryMetrics(
+    @SerialName("total_bytes") val totalBytes: Long = 0L,
+    @SerialName("used_bytes") val usedBytes: Long = 0L,
+    @SerialName("free_bytes") val freeBytes: Long = 0L,
+    val percent: Double = 0.0,
+)
+
+@Serializable
+data class HostDiskMetrics(
+    @SerialName("total_bytes") val totalBytes: Long = 0L,
+    @SerialName("used_bytes") val usedBytes: Long = 0L,
+    @SerialName("free_bytes") val freeBytes: Long = 0L,
+    val percent: Double = 0.0,
+)
+
+@Serializable
+data class HostSystemMetrics(
+    val platform: String = "",
+    val release: String = "",
+    val architecture: String = "",
+    @SerialName("python_version") val pythonVersion: String = "",
+    @SerialName("uptime_seconds") val uptimeSeconds: Long = 0L,
+)
+
+@Serializable
+data class HostHermesProcess(
+    val pid: Int = 0,
+    val status: String = "online",
+)
+
+@Serializable
+data class HostMetrics(
+    val cpu: HostCpuMetrics = HostCpuMetrics(),
+    val memory: HostMemoryMetrics = HostMemoryMetrics(),
+    val disk: HostDiskMetrics = HostDiskMetrics(),
+    val system: HostSystemMetrics = HostSystemMetrics(),
+    val hermes: HostHermesProcess = HostHermesProcess(),
+)
+
+@Serializable
+data class GitStatus(
+    val branch: String = "main",
+    val tracking: String = "",
+    val ahead: Int = 0,
+    val behind: Int = 0,
+    @SerialName("staged_files") val stagedFiles: List<String> = emptyList(),
+    @SerialName("modified_files") val modifiedFiles: List<String> = emptyList(),
+    @SerialName("untracked_files") val untrackedFiles: List<String> = emptyList(),
+)
+
+@Serializable
+data class GitDiffSummary(
+    @SerialName("raw_diff") val rawDiff: String = "",
+    @SerialName("files_changed") val filesChanged: Int = 0,
+    val insertions: Int = 0,
+    val deletions: Int = 0,
+)
+
+@Serializable
+data class GitBranches(
+    val current: String = "",
+    val branches: List<String> = emptyList(),
+)
+
+@Serializable
+data class RemoteFsItem(
+    val path: String = "",
+    val name: String = "",
+    @SerialName("is_dir") val isDir: Boolean = false,
+    @SerialName("size_bytes") val sizeBytes: Long = 0L,
+    @SerialName("modified_ms") val modifiedMs: Long = 0L,
+)
+
+@Serializable
+data class TerminalExecResult(
+    val ok: Boolean = false,
+    @SerialName("exit_code") val exitCode: Int = 0,
+    val stdout: String = "",
+    val stderr: String = "",
+)
+
+@Serializable
+data class CronJob(
+    val id: String,
+    val name: String = "",
+    val prompt: String = "",
+    @SerialName("schedule_display") val scheduleDisplay: String = "",
+    val enabled: Boolean = true,
+    val state: String = "scheduled",
+    @SerialName("next_run_at") val nextRunAt: String? = null,
+    @SerialName("last_run_at") val lastRunAt: String? = null,
+    @SerialName("last_status") val lastStatus: String? = null,
+    @SerialName("last_error") val lastError: String? = null,
+    val profile: String = "",
+    val deliver: String = "",
+)
+
+@Serializable
+data class ModelOption(
+    val id: String,
+    val provider: String,
+    val name: String,
+    val reasoning: Boolean = false,
+    val fast: Boolean = false,
+    val canDisableReasoning: Boolean? = null,
+    /** False when the inventory omitted the reasoning capability, rather than denying it. */
+    val reasoningSupportReported: Boolean = true,
+)
+
+@Serializable
+data class ModelCatalog(
+    val currentModel: String = "",
+    val currentProvider: String = "",
+    val models: List<ModelOption> = emptyList(),
+)
+
+@Serializable
+data class HermesUpdateStatus(
+    @SerialName("current_version") val currentVersion: String = "",
+    @SerialName("update_available") val updateAvailable: Boolean = false,
+    @SerialName("can_apply") val canApply: Boolean = false,
+    val behind: Int = 0,
+    val summary: String = "",
+    @SerialName("update_command") val updateCommand: String = "hermes update",
+)
+
+@Serializable
+data class SavedGateway(
+    val id: String,
+    val name: String,
+    val origin: String,
+    val token: String? = null,
+    val isActive: Boolean = false,
+    /** Host kind: `hermes` today, `openclaw` later (P19). */
+    val kind: String = "hermes",
+)
+
+/** Connect-screen chip (A18.5): one row per distinct origin. */
+@Serializable
+data class GatewayChoice(
+    val id: String,
+    val origin: String,
+    val name: String,
+    val host: String,
+    val paired: Boolean = false,
+    val lastOk: Boolean = false,
+    val forgettable: Boolean = false,
+    /** `""` unknown, `"up"`, `"down"`. */
+    val health: String = "",
+)
+
+
+
+// ---- Coding-agent sessions (P23) --------------------------------------------------------------
+
+/** A CLI the host was probed for (`/companion/agents/tools`). Nothing is assumed installed. */
+@Serializable
+data class AgentTool(
+    val id: String,
+    val label: String,
+    val glyph: String,
+    val installed: Boolean,
+    val path: String = "",
+    val version: String = "",
+    val modes: List<String> = listOf("pty"),
+    val installHint: String = "",
+    val loginHint: String = "",
+)
+
+/**
+ * One coding-agent session on the host. `mode` is `pty` (tmux pane) or `structured` (stream-json
+ * chat). `status`: `starting` · `running` · `waiting_input` · `waiting_approval` · `exited`.
+ */
+@Serializable
+data class AgentSession(
+    val id: String,
+    val tool: String,
+    val mode: String = "pty",
+    val cwd: String = "",
+    val title: String = "",
+    val command: String = "",
+    val status: String = "starting",
+    val exitCode: Int? = null,
+    val lastLine: String = "",
+    val cols: Int = 100,
+    val rows: Int = 40,
+    val createdAtEpochMs: Long = 0L,
+    val updatedAtEpochMs: Long = 0L,
+    val attach: String = "",
+)
+
+/**
+ * One normalised event from a structured (stream-json) coding-agent session (A23.3/A23.4). The host
+ * maps Claude Code / Codex wire formats onto these; the phone reduces them into chat rows.
+ */
+sealed class AgentEvent {
+    data class Ready(val agentSessionId: String, val model: String) : AgentEvent()
+    data class User(val text: String) : AgentEvent()
+    data class Delta(val text: String) : AgentEvent()
+    data class ToolStart(val toolId: String, val name: String, val detail: String) : AgentEvent()
+    data class ToolComplete(val toolId: String, val name: String, val detail: String, val error: Boolean, val durationMs: Long) : AgentEvent()
+    data class Approval(val prompt: ApprovalPrompt) : AgentEvent()
+    data class ApprovalResolved(val requestId: String, val decision: String) : AgentEvent()
+    data object TurnStart : AgentEvent()
+    data class TurnEnd(val text: String, val isError: Boolean, val costUsd: Double?, val durationMs: Long?) : AgentEvent()
+    data class Error(val message: String) : AgentEvent()
+    data class Exit(val exitCode: Int?, val stderr: String) : AgentEvent()
+}
+
+/** One row of the host directory picker (`GET /companion/agents/dirs`). */
+data class AgentDir(val name: String, val path: String, val git: Boolean = false, val project: Boolean = false)
+
+data class AgentRoot(val path: String, val label: String)
+
+/** A directory listing for the new-session picker: where we are, how to go up, roots, recents. */
+data class AgentDirListing(
+    val path: String = "",
+    val parent: String? = null,
+    val roots: List<AgentRoot> = emptyList(),
+    val dirs: List<AgentDir> = emptyList(),
+    val recent: List<String> = emptyList(),
+    val truncated: Boolean = false,
+    val git: Boolean = false,
+)
+
+/** A screen snapshot: raw ANSI text plus cursor, parsed on the phone by `AnsiText`. */
+data class AgentPane(
+    val ansi: String = "",
+    val cursorX: Int = 0,
+    val cursorY: Int = 0,
+    val cols: Int = 100,
+    val rows: Int = 40,
+)
