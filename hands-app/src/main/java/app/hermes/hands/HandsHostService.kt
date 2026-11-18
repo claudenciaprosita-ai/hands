@@ -164,6 +164,7 @@ class HandsHostService : Service(), AgentScreenHost {
                         runtime.screenOpened(id)
                     }
                 } catch (error: Throwable) {
+                    android.util.Log.e("HandsHostService", "Headless start error", error)
                     screen.failure = error
                     closeSession(screen)
                 } finally {
@@ -267,6 +268,7 @@ class HandsHostService : Service(), AgentScreenHost {
                                     }
                                 }
                             } catch (error: Throwable) {
+                                android.util.Log.e("HandsHostService", "Overlay start error", error)
                                 screen.failure = error
                                 closeSession(screen)
                             } finally { screen.ready.countDown() }

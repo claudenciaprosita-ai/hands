@@ -87,12 +87,11 @@ class PrivilegedHandsService @Keep constructor(context: Context) : IHandsService
         // OWN_CONTENT_ONLY prevents mirroring the operator's phone. DESTROY_CONTENT_ON_REMOVAL
         // prevents Android moving agent tasks to the operator display when the screen closes.
         // OWN_FOCUS + STEAL_TOP_FOCUS_DISABLED keep targeted input off the operator's focus.
-        // OWN_DISPLAY_GROUP (1 shl 11) + ALWAYS_UNLOCKED (1 shl 12) + CAN_SHOW_WITH_INSECURE_KEYGUARD (1 shl 5)
-        // allow the agent display to render and remain visible even while the physical device is
-        // locked or the primary display is off.
+        // OWN_DISPLAY_GROUP (1 shl 11) + ALWAYS_UNLOCKED (1 shl 12) allow the agent display
+        // to render and remain visible even while the physical device is locked or the primary display is off.
+        // NOTE: CAN_SHOW_WITH_INSECURE_KEYGUARD (1 shl 5) must NOT be combined with VIRTUAL_DISPLAY_FLAG_PUBLIC.
         val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC or
             DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
-            (1 shl 5) or  // VIRTUAL_DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD
             (1 shl 6) or  // VIRTUAL_DISPLAY_FLAG_SUPPORTS_TOUCH
             (1 shl 8) or  // VIRTUAL_DISPLAY_FLAG_DESTROY_CONTENT_ON_REMOVAL
             (1 shl 10) or // VIRTUAL_DISPLAY_FLAG_TRUSTED
@@ -113,12 +112,20 @@ class PrivilegedHandsService @Keep constructor(context: Context) : IHandsService
                 }
             } }
         }
-        val display = displays.createVirtualDisplay("Hands agent", width, height, densityDpi,
-            surface, flags, stopped, Handler(callbacks.looper))
-            ?: throw Failure("agent_screen_failed", "Android did not create the agent display")
+        val display = try {
+            displays.createVirtualDisplay("Hands agent", width, height, densityDpi,
+                surface, flags, stopped, Handler(callbacks.looper))
+        } catch (t: Throwable) {
+            android.util.Log.e("PrivilegedHands", "createVirtualDisplay failed with flags=0x${flags.toString(16)}", t)
+            throw Failure("agent_screen_failed", "createVirtualDisplay failed: ${t.message}")
+        } ?: run {
+            android.util.Log.e("PrivilegedHands", "createVirtualDisplay returned null")
+            throw Failure("agent_screen_failed", "Android did not create the agent display")
+        }
         try { sessions.require(epoch) } catch (error: Exception) { display.release(); surface.release(); throw error }
         val requiredDisplayFlags = (1 shl 11) or (1 shl 12)
         if (display.display.displayId == 0 || display.display.flags and requiredDisplayFlags != requiredDisplayFlags) {
+            android.util.Log.e("PrivilegedHands", "Flags mismatch: displayId=${display.display.displayId}, flags=0x${Integer.toHexString(display.display.flags)}, required=0x${Integer.toHexString(requiredDisplayFlags)}")
             display.release()
             throw Failure("focus_isolation_unavailable", "This Android build did not preserve independent agent focus")
         }
