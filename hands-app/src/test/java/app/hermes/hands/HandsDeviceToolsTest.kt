@@ -119,7 +119,7 @@ class HandsDeviceToolsTest {
     }
 
     @Test fun filesProtectOwnAppAndCustomPackagesAndPreserveTransactionalHashes() {
-        val own = File(temp.root, "Android/media/${app.packageName}/private").apply { parentFile.mkdirs(); writeText("keep") }
+        val own = File(temp.root, "Android/media/${app.packageName}/private").apply { parentFile?.mkdirs(); writeText("keep") }
         val rejected = execute("device.files", JSONObject().put("action", "read").put("path", own.path))
         assertEquals("protected_package", rejected.getJSONObject("error").getString("code"))
         val write = execute("device.files", JSONObject().put("action", "write").put("path", "note").put("content", "fixture नमस्ते"))
