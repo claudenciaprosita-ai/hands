@@ -36,7 +36,7 @@ Add the following to your `claude_desktop_config.json`:
     "hands": {
       "command": "python3",
       "args": [
-        "/path/to/hermes-hands/hands-mcp/hands_mcp.py",
+        "/path/to/hands/hands-mcp/hands_mcp.py",
         "--endpoint", "https://100.105.213.54:8766",
         "--token-file", "/Users/yourname/.config/hands/token",
         "--insecure"
@@ -54,7 +54,7 @@ mcp_servers:
   hands:
     command: python3
     args:
-      - /path/to/hermes-hands/hands-mcp/hands_mcp.py
+      - /path/to/hands/hands-mcp/hands_mcp.py
       - --endpoint
       - https://100.105.213.54:8766
       - --token-file

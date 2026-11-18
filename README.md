@@ -75,7 +75,7 @@ flowchart TD
 ## Repository Structure
 
 ```
-hermes-hands/
+hands/
 ├── hands-app/         # The sovereign Android application (Services, Runtime, HTTP Server, UI)
 ├── hands-engine/      # Privileged Shizuku backend, AIDL service, gestures, and display capture
 ├── hands-client/      # Android client SDK for third-party apps integrating Hands
@@ -115,8 +115,8 @@ hermes-hands/
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/hermes-hands.git
-cd hermes-hands
+git clone https://github.com/your-org/hands.git
+cd hands
 
 # Build debug APK
 ./gradlew :hands-app:assembleDebug
@@ -158,7 +158,7 @@ Add the Hands MCP server to your MCP client configuration (e.g. `claude_desktop_
     "hands": {
       "command": "python3",
       "args": [
-        "/path/to/hermes-hands/hands-mcp/hands_mcp.py",
+        "/path/to/hands/hands-mcp/hands_mcp.py",
         "--endpoint", "https://<phone-ip>:8766",
         "--token-file", "/Users/yourname/.config/hands/token",
         "--insecure"

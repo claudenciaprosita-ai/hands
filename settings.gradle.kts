@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hermes-hands"
+rootProject.name = "hands"
 
 include(":hands-app")
 include(":hands-engine")
